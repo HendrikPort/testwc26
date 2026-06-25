@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v78-TEST — back button below hero (off logo); points badge tucked inside card -->
+<!-- v79-TEST — hide submit bar in read-only player bracket view -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -871,7 +871,8 @@ body.has-ko-bar .admin-trigger{bottom:4.5rem;}
 .ko-tb-btn{flex:1;padding:5px 4px;border:1px solid var(--border2);border-radius:6px;background:rgba(0,0,0,0.3);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all 0.15s;}
 .ko-tb-btn:hover{border-color:var(--gold);color:var(--text);}
 .ko-tb-btn.sel{background:var(--green);border-color:var(--green);color:#07140c;}
-.ko-pred-summary{position:fixed;left:0;right:0;bottom:0;background:var(--surface2);border-top:1px solid var(--border2);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;z-index:50;box-shadow:0 -4px 20px rgba(0,0,0,0.5);}
+.ko-pred-summary{display:none;position:fixed;left:0;right:0;bottom:0;background:var(--surface2);border-top:1px solid var(--border2);padding:12px 24px;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;z-index:50;box-shadow:0 -4px 20px rgba(0,0,0,0.5);}
+body.show-ko-submit .ko-pred-summary{display:flex;}
 .ko-pred-count{font-size:13px;color:var(--text2);}
 .ko-pred-count b{color:var(--gold);}
 .ko-submit-btn{background:var(--gold);color:#1a1205;border:none;border-radius:8px;padding:11px 26px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.06em;cursor:pointer;font-weight:400;}
@@ -1616,6 +1617,8 @@ function showView(name) {
   target.classList.add('active');
   // The fixed KO summary bar only exists on the bracket view
   document.body.classList.toggle('has-ko-bar', name === 'bracket');
+  // Submit bar shows only in the editable bracket (not in read-only player view)
+  document.body.classList.toggle('show-ko-submit', name === 'bracket' && !koViewMode);
   // Leaving the bracket entirely exits any player-view mode
   if (name !== 'bracket') {
     koViewMode = null;
