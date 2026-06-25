@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v67-TEST — reads resolved R32 teams from ko_results (Edge Function fills it from API standings) -->
+<!-- v69-TEST — fixed bottom bar (no jump), bottom padding for bracket -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -797,7 +797,7 @@ body{font-family:'Barlow',sans-serif;color:var(--text);min-height:100vh;overflow
   .groups-container { gap: 0.75rem; }
   .score-inp { width: 38px; height: 38px; font-size: 15px; }
 }
-.bracket-scroll{overflow-x:auto;padding:1rem 0 2rem;-webkit-overflow-scrolling:touch;}
+.bracket-scroll{overflow-x:auto;padding:0.5rem 0 5rem;-webkit-overflow-scrolling:touch;}
 /* ── Mirrored two-sided bracket ── */
 #bracket-tree{display:flex;justify-content:center;align-items:stretch;gap:0;min-width:max-content;padding:0 1rem;}
 .ko-side{display:flex;align-items:stretch;}
@@ -853,7 +853,7 @@ body{font-family:'Barlow',sans-serif;color:var(--text);min-height:100vh;overflow
 .ko-tb-btn{flex:1;padding:5px 4px;border:1px solid var(--border2);border-radius:6px;background:rgba(0,0,0,0.3);color:var(--text2);font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:all 0.15s;}
 .ko-tb-btn:hover{border-color:var(--gold);color:var(--text);}
 .ko-tb-btn.sel{background:var(--green);border-color:var(--green);color:#07140c;}
-.ko-pred-summary{position:sticky;bottom:0;background:var(--surface2);border-top:1px solid var(--border2);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;z-index:10;}
+.ko-pred-summary{position:fixed;left:0;right:0;bottom:0;background:var(--surface2);border-top:1px solid var(--border2);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;z-index:50;box-shadow:0 -4px 20px rgba(0,0,0,0.5);}
 .ko-pred-count{font-size:13px;color:var(--text2);}
 .ko-pred-count b{color:var(--gold);}
 .ko-submit-btn{background:var(--gold);color:#1a1205;border:none;border-radius:8px;padding:11px 26px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.06em;cursor:pointer;font-weight:400;}
@@ -1438,6 +1438,58 @@ async function savePredictions(name, preds) {
 async function koGetPlayerPreds(name) {
   return sbFetch(`ko_predictions?player=eq.${encodeURIComponent(name)}&select=*`);
 }
+
+// Fetch ALL ko_predictions (paginated, like getAllPredictions).
+async function koGetAllPreds() {
+  const all = []; let from = 0; const size = 1000;
+  while (true) {
+    const batch = await sbFetch(`ko_predictions?select=*&order=id.asc`, {
+      headers: { 'Range-Unit': 'items', 'Range': `${from}-${from+size-1}` }
+    });
+    all.push(...batch);
+    if (batch.length < size) break;
+    from += size;
+  }
+  return all;
+}
+
+// Fetch all ko_results.
+async function koGetResults() {
+  return sbFetch('ko_results?select=*');
+}
+
+// Score one player's KO predictions against results.
+// Rule: a slot scores ONLY if the predicted teams match the real teams
+// in that slot (order-independent) AND then 3 exact / 1 correct result / 0.
+// 90-minute result only (home_score/away_score in ko_results).
+function koScorePlayer(preds, resultsBySlot) {
+  let pts = 0, exact = 0, correct = 0;
+  preds.forEach(pr => {
+    const res = resultsBySlot[pr.slot];
+    if (!res) return;
+    if (res.home_team == null || res.away_team == null) return;     // slot not set
+    if (res.home_score == null || res.away_score == null) return;   // not played yet
+    // Teams must match the real matchup (order-independent).
+    const predPair = [pr.home_team, pr.away_team].sort().join('|');
+    const realPair = [res.home_team, res.away_team].sort().join('|');
+    if (predPair !== realPair) return; // wrong teams → 0 (cascade)
+
+    // Align the player's scores to the real home/away orientation.
+    let phs, pas;
+    if (pr.home_team === res.home_team) { phs = pr.home_score; pas = pr.away_score; }
+    else { phs = pr.away_score; pas = pr.home_score; } // they had teams flipped
+
+    if (phs == null || pas == null) return;
+    if (phs === res.home_score && pas === res.away_score) { pts += 3; exact++; }
+    else {
+      const pr2 = phs > pas ? 'H' : phs < pas ? 'A' : 'D';
+      const rr  = res.home_score > res.away_score ? 'H' : res.home_score < res.away_score ? 'A' : 'D';
+      if (pr2 === rr) { pts += 1; correct++; }
+    }
+  });
+  return { pts, exact, correct };
+}
+
 
 // Save all 32 rows for a player. Returns true on success.
 async function koSavePlayerPreds(name, rows) {
