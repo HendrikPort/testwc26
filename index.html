@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v71-TEST — admin trigger lifted above KO bar on bracket view -->
+<!-- v72-TEST — bracket always reloads ko_results fresh (fixes stale/partial team display) -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1602,11 +1602,9 @@ function showView(name) {
   window.scrollTo(0,0);
   if (name === 'leaderboard') loadLeaderboard();
   if (name === 'bracket') {
-    if (!koTeamsLoaded) {
-      koLoadResultsTeams().then(() => { koState = {}; renderBracket(); });
-    } else {
-      renderBracket();
-    }
+    // Always reload the resolved/overridden teams fresh from ko_results,
+    // so admin edits and newly-resolved groups always show.
+    koLoadResultsTeams().then(() => { koState = {}; renderBracket(); });
   }
 }
 
