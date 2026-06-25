@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v63 — interactive prediction bracket (test teams): scores, draw tiebreak, downstream auto-clear -->
+<!-- v65-TEST — name-gate (players table) + KO submit saves 32 rows to ko_predictions -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -867,11 +867,11 @@ body{font-family:'Barlow',sans-serif;color:var(--text);min-height:100vh;overflow
       <div class="cd-block"><div class="cd-num" id="cd-secs">--</div><div class="cd-label">Secs</div></div>
     </div>
     <div class="welcome-card">
-      <h2>Knockout Stage</h2>
-      <p>The group stage is complete. Follow the knockout bracket as teams fill in round by round.</p>
-      <input class="name-input" id="name-input" type="text" placeholder="Your full name" maxlength="40" autocomplete="off" style="display:none">
+      <h2>Knockout Predictions</h2>
+      <p>Enter your name to predict the knockout bracket. Only players from the group stage can enter.</p>
+      <input class="name-input" id="name-input" type="text" placeholder="Your full name (as registered)" maxlength="40" autocomplete="off">
       <div class="error-msg" id="error-msg"></div>
-      <button class="btn-start" id="btn-start">VIEW BRACKET →</button>
+      <button class="btn-start" id="btn-start">START PREDICTING →</button>
       <div class="welcome-rules">
         <strong>Scoring:</strong> Exact score = 3 pts &bull; Correct result = 1 pt &bull; Wrong = 0 pts
       </div>
@@ -1038,8 +1038,8 @@ body{font-family:'Barlow',sans-serif;color:var(--text);min-height:100vh;overflow
 // ══════════════════════════════════════════════════════
 // CONFIG
 // ══════════════════════════════════════════════════════
-const SUPABASE_URL = 'https://xpngjnvgkywaoikhuzym.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhwbmdqbnZna3l3YW9pa2h1enltIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMjc3MjksImV4cCI6MjA5NTkwMzcyOX0.8XBqHQoZcel54oIwU7prAOnqsZyDD8bw8sDiUbJK9j0';
+const SUPABASE_URL = 'https://bwvutvbzkxlugfpgahzm.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3dnV0dmJ6a3hsdWdmcGdhaHptIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNjk3NzEsImV4cCI6MjA5Nzk0NTc3MX0.N-kmKv8SkVWLPRCD_0sbqJuNE8wh66_1BPmqHs0p1mo';
 // Admin password stored in Supabase — not here
 const DEADLINE     = new Date('2027-06-10T23:59:59'); // TEMP: pushed out for offline testing — revert to 2026-06-10 before deploy
 
@@ -1225,6 +1225,8 @@ const SCHEDULE = {
 };
 
 const FLAGS = {
+  'Italy':'it',
+  'England':'gb-eng',
   'Mexico':'mx',
   'South Africa':'za',
   'South Korea':'kr',
@@ -1426,6 +1428,19 @@ async function savePredictions(name, preds) {
   });
 }
 
+// ── Knockout prediction storage ──
+async function koGetPlayerPreds(name) {
+  return sbFetch(`ko_predictions?player=eq.${encodeURIComponent(name)}&select=*`);
+}
+
+// Save all 32 rows for a player. Returns true on success.
+async function koSavePlayerPreds(name, rows) {
+  // Safety: remove any partial prior rows for this player first
+  await sbFetch(`ko_predictions?player=eq.${encodeURIComponent(name)}`, { method:'DELETE', headers:{'Prefer':''} });
+  await sbFetch('ko_predictions', { method:'POST', body: JSON.stringify(rows) });
+  return true;
+}
+
 async function getAllPlayers() {
   return sbFetch('players?select=*&order=submitted_at.asc');
 }
@@ -1526,6 +1541,68 @@ const KO_R32_IDS = ['R32-1','R32-2','R32-3','R32-4','R32-5','R32-6','R32-7','R32
 function koSeedTeams() {
   // Real teams take priority (window.KO_TEAMS for June 28); else test seed.
   return window.KO_TEAMS || KO_R32_TEST;
+}
+
+// ── Standings resolver ──────────────────────────────────────────
+// Takes the API-Football standings array (response[0].league.standings)
+// and produces { '1A':'Mexico', '2A':'South Africa', ... } for every
+// group that has FINISHED (all teams played 3). Unfinished groups and
+// all 3rd-place slots are left out (they stay as bracket placeholders).
+//
+// `standings` shape: array of group-arrays; each entry has
+//   .rank, .team.name, .group ("Group A"), .all.played
+function koResolvePositions(standings) {
+  const map = {}; // code -> team name
+  if (!Array.isArray(standings)) return map;
+  standings.forEach(groupArr => {
+    if (!Array.isArray(groupArr) || groupArr.length === 0) return;
+    // Group letter from the label, e.g. "Group A" -> "A"
+    const label = groupArr[0].group || '';
+    const letter = (label.trim().split(/\s+/).pop() || '').toUpperCase();
+    if (!/^[A-L]$/.test(letter)) return; // not a WC group label we recognise
+    // A group is "final" only when every team has played all 3 games.
+    const finished = groupArr.every(t => (t.all?.played || 0) >= 3);
+    if (!finished) return;
+    // Sort by rank to be safe, then assign 1X / 2X (3rd handled via Annex C later)
+    const sorted = [...groupArr].sort((a, b) => (a.rank || 99) - (b.rank || 99));
+    if (sorted[0]?.team?.name) map['1' + letter] = sorted[0].team.name;
+    if (sorted[1]?.team?.name) map['2' + letter] = sorted[1].team.name;
+  });
+  return map;
+}
+
+// Build window.KO_TEAMS {slotId:{home,away}} from a positions map.
+// Only fills sides whose code is a resolved 1X/2X; 3rd-place codes
+// (3ABCDF etc.) are left null so the bracket shows a placeholder until
+// admin override (or the future Annex C resolver) fills them.
+function koApplyPositions(posMap) {
+  const teams = {};
+  KO_R32.forEach(m => {
+    const home = posMap[m.home] || null;       // 1X/2X resolve; 3X -> null
+    const away = posMap[m.away] || null;
+    teams[m.id] = { home, away };
+  });
+  // Merge over any existing overrides already set by admin
+  const prev = window.KO_TEAMS || {};
+  Object.keys(prev).forEach(id => {
+    teams[id] = teams[id] || {};
+    if (prev[id].home) teams[id].home = prev[id].home;
+    if (prev[id].away) teams[id].away = prev[id].away;
+  });
+  window.KO_TEAMS = teams;
+}
+
+// Convenience: take a raw standings JSON object and apply it.
+// Accepts either the full API response or just the standings array.
+function koApplyStandingsJson(json) {
+  let standings = null;
+  if (Array.isArray(json)) standings = json.length && Array.isArray(json[0]) ? json : [json];
+  else standings = json?.response?.[0]?.league?.standings || null;
+  if (!standings) return false;
+  koApplyPositions(koResolvePositions(standings));
+  koInitState();           // rebuild prediction state on the new teams
+  if (document.getElementById('bracket-tree')) renderBracket();
+  return true;
 }
 
 function koInitState() {
@@ -1685,6 +1762,44 @@ function koUpdateSummary() {
   if (btn) btn.disabled = (n < 32);
 }
 
+// Build the 32 rows for saving from current state.
+function koBuildRows(playerName) {
+  const allSlots = KO_R32.map(m=>m.id).concat(KO_PROGRESSION.map(s=>s.id));
+  return allSlots.map(id => {
+    const st = koState[id];
+    return {
+      player: playerName,
+      slot: id,
+      home_team: st.home,
+      away_team: st.away,
+      home_score: st.hs,
+      away_score: st.as
+    };
+  });
+}
+
+async function koSubmit() {
+  const btn = document.getElementById('ko-submit-btn');
+  if (!currentPlayer) { alert('No player set — go back and enter your name.'); return; }
+  if (koPredictedCount() < 32) { showToast('Predict all 32 matches first', false); return; }
+  btn.disabled = true;
+  const orig = btn.textContent;
+  btn.textContent = 'Saving…';
+  try {
+    const rows = koBuildRows(currentPlayer);
+    await koSavePlayerPreds(currentPlayer, rows);
+    showToast('✓ Bracket submitted!', true);
+    btn.textContent = 'SUBMITTED ✓';
+    // Lock the bracket from further edits
+    document.querySelectorAll('.ko-score-in').forEach(i => i.disabled = true);
+    document.querySelectorAll('.ko-tb-btn').forEach(b => b.disabled = true);
+  } catch(e) {
+    showToast('Error saving: ' + e.message, false);
+    btn.textContent = orig;
+    btn.disabled = false;
+  }
+}
+
 function koWireInputs() {
   // Score inputs
   document.querySelectorAll('.ko-score-in').forEach(inp => {
@@ -1711,13 +1826,53 @@ function koWireInputs() {
   });
 }
 
+// Bind the submit button once (it lives in static markup, not re-rendered)
+(function bindKoSubmit(){
+  const sb = document.getElementById('ko-submit-btn');
+  if (sb) sb.addEventListener('click', koSubmit);
+})();
+
 // ══════════════════════════════════════════════════════
 // WELCOME / START
 // ══════════════════════════════════════════════════════
-document.getElementById('btn-start').addEventListener('click', () => {
-  // Group-stage predictions are closed for the tournament; send everyone to
-  // the knockout bracket. (Knockout predictions handled separately later.)
-  showView('bracket');
+document.getElementById('btn-start').addEventListener('click', async () => {
+  const name = document.getElementById('name-input').value.trim();
+  const errEl = document.getElementById('error-msg');
+  errEl.style.display = 'none';
+  if (!name) { errEl.textContent = 'Please enter your name.'; errEl.style.display = 'block'; return; }
+
+  const btn = document.getElementById('btn-start');
+  btn.innerHTML = '<span class="spinner"></span>Checking…';
+  btn.disabled = true;
+
+  try {
+    // Name-gate: must match an existing player exactly. No new names.
+    const existing = await getPlayer(name);
+    if (!existing) {
+      errEl.textContent = '⚠ Name not found. Only players from the group stage can enter — please use your exact registered name.';
+      errEl.style.display = 'block';
+      btn.innerHTML = 'START PREDICTING →';
+      btn.disabled = false;
+      return;
+    }
+    // Use the canonical stored name (correct casing/spelling)
+    currentPlayer = existing.name;
+    // If they already submitted a KO bracket, block re-entry (one submission)
+    const already = await koGetPlayerPreds(currentPlayer);
+    if (already && already.length > 0) {
+      errEl.textContent = '⚠ You have already submitted your knockout bracket. No changes allowed.';
+      errEl.style.display = 'block';
+      btn.innerHTML = 'START PREDICTING →';
+      btn.disabled = false;
+      return;
+    }
+    showView('bracket');
+  } catch(e) {
+    errEl.textContent = 'Connection error. Please try again.';
+    errEl.style.display = 'block';
+  }
+  btn.innerHTML = 'START PREDICTING →';
+  btn.disabled = false;
 });
 
 // ══════════════════════════════════════════════════════
