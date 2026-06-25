@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v77-TEST — player KO bracket as full scored tree (view mode), back button -->
+<!-- v78-TEST — back button below hero (off logo); points badge tucked inside card -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -881,7 +881,7 @@ body.has-ko-bar .admin-trigger{bottom:4.5rem;}
 .ko-match.ko-correct{border-color:var(--yellow);background:rgba(250,204,21,0.12);}
 .ko-match.ko-wrong{border-color:var(--red);background:rgba(248,113,113,0.10);}
 .ko-score-static{font-size:14px;font-weight:700;color:var(--text);min-width:18px;text-align:center;flex-shrink:0;}
-.ko-pts-badge{position:absolute;top:-8px;right:-8px;font-size:10px;font-weight:700;border-radius:10px;padding:2px 7px;z-index:3;}
+.ko-pts-badge{position:absolute;top:4px;right:4px;font-size:9px;font-weight:700;border-radius:8px;padding:1px 6px;z-index:3;line-height:1.4;}
 .ko-pts-badge.three{background:var(--green);color:#07140c;}
 .ko-pts-badge.one{background:var(--yellow);color:#1a1205;}
 .ko-pts-badge.zero{background:var(--red);color:#1a0808;}
@@ -2462,19 +2462,25 @@ async function koOpenPlayerBracket(name) {
     const hero = document.querySelector('#view-bracket .lb-hero h2');
     const sub = document.querySelector('#view-bracket .lb-hero p');
     if (hero) hero.innerHTML = `${name}'s Bracket`;
-    if (sub) sub.textContent = `${score.pts} KO pts — ${score.exact} exact, ${score.correct} correct · tap “Back to leaderboard”`;
-    // Show a back button
+    if (sub) sub.textContent = `${score.pts} KO pts — ${score.exact} exact, ${score.correct} correct`;
+    // Back button placed below the hero (clear of the header logo)
     let back = document.getElementById('ko-view-back');
     if (!back) {
       back = document.createElement('button');
       back.id = 'ko-view-back';
       back.className = 'nav-btn';
       back.textContent = '← Back to leaderboard';
-      back.style.cssText = 'position:fixed;top:14px;left:16px;z-index:60;';
       back.onclick = koExitPlayerBracket;
-      document.body.appendChild(back);
     }
-    back.style.display = 'inline-block';
+    back.style.cssText = 'display:inline-block;margin:0 auto 1rem;';
+    // Insert it right after the hero block inside the bracket view
+    const hero2 = document.querySelector('#view-bracket .lb-hero');
+    if (hero2 && back.parentElement !== hero2.parentElement) {
+      hero2.insertAdjacentElement('afterend', back);
+    }
+    // center it
+    back.style.cssText = 'display:block;margin:0 auto 1rem;';
+    back.style.display = 'block';
   } catch(e) {
     showToast('Error loading bracket: ' + e.message, false);
   }
