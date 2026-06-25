@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v72-TEST — bracket always reloads ko_results fresh (fixes stale/partial team display) -->
+<!-- v73-TEST — leaderboard tabs (Overall/Group/Knockout) with KO scoring; score cap 20 -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -352,6 +352,9 @@ body{font-family:'Barlow',sans-serif;color:var(--text);min-height:100vh;overflow
   font-size:2.2rem;letter-spacing:0.08em;color:#fff;
 }
 .lb-hero p{font-size:13px;color:var(--text2);margin-top:4px;}
+.lb-tabs{display:flex;gap:8px;justify-content:center;margin:0 auto 1.25rem;max-width:400px;}
+.lb-tab{flex:1;background:rgba(255,255,255,0.05);border:1px solid var(--border2);color:var(--text2);font-family:'Barlow Condensed',sans-serif;font-size:13px;letter-spacing:0.06em;text-transform:uppercase;padding:9px 6px;border-radius:8px;cursor:pointer;transition:all 0.15s;}
+.lb-tab.active{background:var(--gold);border-color:var(--gold);color:#1a1205;font-weight:700;}
 
 .lb-wrap{max-width:900px;margin:0 auto;padding:0 1.5rem;}
 
@@ -949,6 +952,11 @@ body.has-ko-bar .admin-trigger{bottom:4.5rem;}
       <div class="lb-hero">
         <h2>🏆 Leaderboard</h2>
         <p id="lb-subtitle">Predictions open — leaderboard updates as matches are played</p>
+      </div>
+      <div class="lb-tabs">
+        <button class="lb-tab active" id="lbtab-overall" onclick="setLbTab('overall')">Overall</button>
+        <button class="lb-tab" id="lbtab-group" onclick="setLbTab('group')">Group Stage</button>
+        <button class="lb-tab" id="lbtab-ko" onclick="setLbTab('knockout')">Knockout</button>
       </div>
       <div class="lb-layout">
         <!-- RIGHT: Leaderboard (shown first on mobile) -->
@@ -1919,7 +1927,7 @@ function koWireInputs() {
     inp.addEventListener('input', (e) => {
       const slot = e.target.dataset.slot, side = e.target.dataset.side;
       let v = e.target.value.trim();
-      v = v === '' ? null : Math.max(0, Math.min(99, parseInt(v,10) || 0));
+      v = v === '' ? null : Math.max(0, Math.min(20, parseInt(v,10) || 0));
       if (side === 'h') koState[slot].hs = v; else koState[slot].as = v;
       koFocus = { slot, side };
       // If no longer a draw, clear any stale advance pick
@@ -1945,7 +1953,7 @@ function koWireInputs() {
       const st = koState[slot];
       let cur = (side === 'h' ? st.hs : st.as);
       if (cur == null) cur = 0;
-      const next = Math.max(0, Math.min(99, cur + dir));
+      const next = Math.max(0, Math.min(20, cur + dir));
       if (side === 'h') st.hs = next; else st.as = next;
       // If no longer a draw, clear stale advance pick
       if (st.hs != null && st.as != null && st.hs !== st.as) st.advance = null;
@@ -2193,55 +2201,92 @@ function renderMatchesPanel(results) {
 // ══════════════════════════════════════════════════════
 // LEADERBOARD
 // ══════════════════════════════════════════════════════
+let lbTab = 'overall';
+function setLbTab(which) {
+  lbTab = which;
+  ['overall','group','knockout'].forEach(t => {
+    const id = t === 'knockout' ? 'lbtab-ko' : 'lbtab-' + t;
+    const el = document.getElementById(id);
+    if (el) el.classList.toggle('active', t === which);
+  });
+  loadLeaderboard();
+}
+
 async function loadLeaderboard() {
   const tbody = document.getElementById('lb-tbody');
   tbody.innerHTML = `<tr><td colspan="5" class="no-results"><span class="spinner"></span> Loading…</td></tr>`;
 
   if (currentPlayer) {
-    document.getElementById('lb-header-player').innerHTML = `Logged in as: <strong>${currentPlayer}</strong>`;
-    document.getElementById('my-preds-btn').style.display = 'inline-block';
+    const hp = document.getElementById('lb-header-player');
+    if (hp) hp.innerHTML = `Logged in as: <strong>${currentPlayer}</strong>`;
+    const mp = document.getElementById('my-preds-btn');
+    if (mp) mp.style.display = 'inline-block';
   }
 
   try {
-    const [players, predictions, results] = await Promise.all([
-      getAllPlayers(), getAllPredictions(), getResults()
-    ]);
+    // Players list — needed for all tabs.
+    const players = await getAllPlayers();
 
+    // Group-stage data (may be empty on test project — wrap so it can't break KO).
+    let predictions = [], results = [];
+    try { [predictions, results] = await Promise.all([getAllPredictions(), getResults()]); } catch(e) {}
+
+    // KO data.
+    let koPreds = [], koResults = [];
+    try { [koPreds, koResults] = await Promise.all([koGetAllPreds(), koGetResults()]); } catch(e) {}
+
+    // --- Group scoring ---
     const resultsMap = {};
     results.forEach(r => { resultsMap[r.match] = { h: r.home_score, a: r.away_score }; });
+    const groupScore = (name) => {
+      const my = predictions.filter(pr => pr.player_name === name);
+      let pts=0, exact=0, correct=0;
+      my.forEach(pr => {
+        const res = resultsMap[pr.match];
+        if (!res || res.h === null || res.a === null) return;
+        if (pr.home_score === res.h && pr.away_score === res.a) { pts+=3; exact++; }
+        else {
+          const a = pr.home_score>pr.away_score?'H':pr.home_score<pr.away_score?'A':'D';
+          const b = res.h>res.a?'H':res.h<res.a?'A':'D';
+          if (a===b){pts+=1;correct++;}
+        }
+      });
+      return {pts,exact,correct};
+    };
 
-    const playedMatches = results.length;
+    // --- KO scoring ---
+    const koResBySlot = {};
+    koResults.forEach(r => { koResBySlot[r.slot] = r; });
+    const koScore = (name) => koScorePlayer(koPreds.filter(p => p.player === name), koResBySlot);
+
+    // Update subtitle + matches panel (group context)
     renderMatchesPanel(results);
-    document.getElementById('lb-subtitle').textContent = playedMatches > 0
-      ? `${playedMatches} of 72 matches played — leaderboard live`
-      : 'Predictions open — leaderboard updates as matches are played';
+    const playedMatches = results.length;
+    document.getElementById('lb-subtitle').textContent =
+      lbTab === 'knockout' ? `Knockout stage — ${koResults.filter(r=>r.home_score!=null).length} matches scored`
+      : lbTab === 'group' ? (playedMatches>0 ? `${playedMatches} of 72 group matches played` : 'Group stage')
+      : 'Overall standings — group + knockout combined';
 
     if (players.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="5" class="no-results">No predictions submitted yet.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" class="no-results">No players yet.</td></tr>`;
       return;
     }
 
-    // calc points per player
+    // Build rows per active tab
     const scored = players.map(p => {
-      const myPreds = predictions.filter(pr => pr.player_name === p.name);
-      let pts = 0, exact = 0, correct = 0;
-      myPreds.forEach(pr => {
-        const res = resultsMap[pr.match];
-        if (!res || res.h === null || res.a === null) return;
-        if (pr.home_score === res.h && pr.away_score === res.a) { pts += 3; exact++; }
-        else {
-          const predResult = pr.home_score > pr.away_score ? 'H' : pr.home_score < pr.away_score ? 'A' : 'D';
-          const realResult = res.h > res.a ? 'H' : res.h < res.a ? 'A' : 'D';
-          if (predResult === realResult) { pts += 1; correct++; }
-        }
-      });
+      const g = groupScore(p.name);
+      const k = koScore(p.name);
+      let pts, exact, correct;
+      if (lbTab === 'group') { pts=g.pts; exact=g.exact; correct=g.correct; }
+      else if (lbTab === 'knockout') { pts=k.pts; exact=k.exact; correct=k.correct; }
+      else { pts=g.pts+k.pts; exact=g.exact+k.exact; correct=g.correct+k.correct; }
       return { name: p.name, pts, exact, correct };
     }).sort((a,b) => b.pts - a.pts || b.exact - a.exact);
 
+    const canViewPreds = isDeadlinePassed || isAdminMode;
     tbody.innerHTML = scored.map((p, i) => {
       const pos = i + 1;
       const posClass = pos===1?'gold':pos===2?'silver':pos===3?'bronze':'';
-      const canViewPreds = isDeadlinePassed || isAdminMode;
       return `<tr onclick="${canViewPreds ? `openPlayerModal('${p.name.replace(/'/g,"\\'")}')` : ''}">
         <td><span class="lb-pos ${posClass}">${pos}</span></td>
         <td><div class="lb-name">${p.name}${canViewPreds ? '<span class="lb-name-click">view picks →</span>' : ''}</div></td>
