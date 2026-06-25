@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v80-TEST — fix connector lines: round-title offset broke nth-child odd/even pairing -->
+<!-- v81-TEST — bracket view uses same bg2 stadium background as leaderboard -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -336,6 +336,16 @@ body{font-family:'Barlow',sans-serif;color:var(--text);min-height:100vh;overflow
   background:#0d1117 url('bg2.png') center center/cover no-repeat fixed;
   position:relative;
 }
+#view-bracket{
+  background:#0d1117 url('bg2.png') center center/cover no-repeat fixed;
+  position:relative;
+}
+#view-bracket::before{
+  content:'';position:fixed;inset:0;
+  background:rgba(5,10,20,0.82);
+  pointer-events:none;z-index:0;
+}
+#view-bracket > *{position:relative;z-index:1;}
 #view-leaderboard.active{display:block}
 .leaderboard-overlay{
   position:fixed;inset:0;
