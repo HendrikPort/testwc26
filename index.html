@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v73-TEST — leaderboard tabs (Overall/Group/Knockout) with KO scoring; score cap 20 -->
+<!-- v74-TEST — fix players order (submitted_at→id) so leaderboard loads on test -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1530,7 +1530,7 @@ async function koSavePlayerPreds(name, rows) {
 }
 
 async function getAllPlayers() {
-  return sbFetch('players?select=*&order=submitted_at.asc');
+  return sbFetch('players?select=*&order=id.asc');
 }
 
 async function getAllPredictions() {
