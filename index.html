@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v79-TEST — hide submit bar in read-only player bracket view -->
+<!-- v80-TEST — fix connector lines: round-title offset broke nth-child odd/even pairing -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -841,10 +841,12 @@ body.has-ko-bar .admin-trigger{bottom:4.5rem;}
 .ko-side.right .ko-cell::after{left:-22px;}
 /* vertical bracket joining each pair of cells, drawn on the round that has the pair */
 .ko-round.has-pairs .ko-cell::before{content:'';position:absolute;width:2px;background:var(--border2);z-index:1;}
-.ko-side.left .ko-round.has-pairs .ko-cell:nth-child(odd)::before{right:-22px;top:50%;height:50%;}
-.ko-side.left .ko-round.has-pairs .ko-cell:nth-child(even)::before{right:-22px;bottom:50%;height:50%;}
-.ko-side.right .ko-round.has-pairs .ko-cell:nth-child(odd)::before{left:-22px;top:50%;height:50%;}
-.ko-side.right .ko-round.has-pairs .ko-cell:nth-child(even)::before{left:-22px;bottom:50%;height:50%;}
+/* NOTE: .ko-round-title is the first child, so cells start at nth-child(2).
+   Top-of-pair cells are therefore EVEN, bottom-of-pair are ODD. */
+.ko-side.left .ko-round.has-pairs .ko-cell:nth-child(even)::before{right:-22px;top:50%;height:50%;}
+.ko-side.left .ko-round.has-pairs .ko-cell:nth-child(odd)::before{right:-22px;bottom:50%;height:50%;}
+.ko-side.right .ko-round.has-pairs .ko-cell:nth-child(even)::before{left:-22px;top:50%;height:50%;}
+.ko-side.right .ko-round.has-pairs .ko-cell:nth-child(odd)::before{left:-22px;bottom:50%;height:50%;}
 /* last round of a side (SF) needs a stub reaching toward the center final */
 .ko-side.left .ko-round.to-final .ko-cell::after{right:-30px;width:30px;}
 .ko-side.right .ko-round.to-final .ko-cell::after{left:-30px;width:30px;}
