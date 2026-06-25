@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v66-TEST — +/- stepper buttons on score inputs (tap instead of type) -->
+<!-- v67-TEST — reads resolved R32 teams from ko_results (Edge Function fills it from API standings) -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -1525,7 +1525,13 @@ function showView(name) {
   document.documentElement.scrollTop = 0;
   window.scrollTo(0,0);
   if (name === 'leaderboard') loadLeaderboard();
-  if (name === 'bracket') renderBracket();
+  if (name === 'bracket') {
+    if (!koTeamsLoaded) {
+      koLoadResultsTeams().then(() => { koState = {}; renderBracket(); });
+    } else {
+      renderBracket();
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════
@@ -1545,8 +1551,31 @@ let koState = {};
 const KO_R32_IDS = ['R32-1','R32-2','R32-3','R32-4','R32-5','R32-6','R32-7','R32-8','R32-9','R32-10','R32-11','R32-12','R32-13','R32-14','R32-15','R32-16'];
 
 function koSeedTeams() {
-  // Real teams take priority (window.KO_TEAMS for June 28); else test seed.
+  // Real teams take priority (window.KO_TEAMS, filled from ko_results); else test seed.
   return window.KO_TEAMS || KO_R32_TEST;
+}
+
+// Load resolved R32 teams from ko_results (written by the Edge Function).
+// Fills window.KO_TEAMS so the bracket shows real teams. Sides that are
+// still null (3rd-place slots, unfinished groups) fall back to placeholders.
+let koTeamsLoaded = false;
+async function koLoadResultsTeams() {
+  try {
+    const rows = await sbFetch('ko_results?select=slot,home_team,away_team');
+    if (Array.isArray(rows) && rows.length) {
+      const teams = {};
+      rows.forEach(r => {
+        teams[r.slot] = { home: r.home_team || null, away: r.away_team || null };
+      });
+      // Only adopt if at least one real team is present
+      const hasReal = Object.values(teams).some(t => t.home || t.away);
+      if (hasReal) window.KO_TEAMS = teams;
+    }
+  } catch (e) {
+    // If the fetch fails, we silently keep test seed — bracket still works.
+    console.warn('ko_results load failed, using test teams:', e.message);
+  }
+  koTeamsLoaded = true;
 }
 
 // ── Standings resolver ──────────────────────────────────────────
