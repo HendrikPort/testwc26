@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v75-TEST — admin KO score entry (all 32 slots: teams+scores+winner); removed My Predictions nav -->
+<!-- v76-TEST — KO bracket viewer in player modal (scored, colored) on knockout tab -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -2312,6 +2312,9 @@ async function openPlayerModal(name) {
   document.getElementById('modal-player-pts').textContent = 'Loading…';
   document.getElementById('modal-body').innerHTML = '<div style="text-align:center;padding:2rem;"><span class="spinner"></span></div>';
 
+  // On the Knockout tab, show the player's KO bracket instead of group scorecard.
+  if (lbTab === 'knockout') { return koPlayerModal(name); }
+
   try {
     const [preds, results] = await Promise.all([
       getPlayerPredictions(name), getResults()
@@ -2382,6 +2385,72 @@ function closeModal() {
 document.getElementById('player-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('player-modal')) closeModal();
 });
+
+// Render a player's KO bracket predictions in the modal, scored.
+async function koPlayerModal(name) {
+  try {
+    const [preds, results] = await Promise.all([koGetPlayerPreds(name), koGetResults()]);
+    const resBySlot = {};
+    results.forEach(r => { resBySlot[r.slot] = r; });
+    const predBySlot = {};
+    preds.forEach(p => { predBySlot[p.slot] = p; });
+
+    const r32num = {}; KO_R32.forEach((m,i)=>{ r32num[m.id]=73+i; });
+    const rounds = [
+      ['Round of 32', KO_R32.map(m=>m.id)],
+      ['Round of 16', KO_PROGRESSION.filter(s=>s.round==='R16').map(s=>s.id)],
+      ['Quarter-finals', KO_PROGRESSION.filter(s=>s.round==='QF').map(s=>s.id)],
+      ['Semi-finals', KO_PROGRESSION.filter(s=>s.round==='SF').map(s=>s.id)],
+      ['Final', ['FINAL']],
+      ['3rd Place', ['3RD']],
+    ];
+
+    let totalPts=0, totalExact=0, totalCorrect=0, bodyHtml='';
+    rounds.forEach(([label, ids]) => {
+      let rows='';
+      ids.forEach(slot => {
+        const p = predBySlot[slot];
+        const meta = slot.startsWith('R32-') ? 'M'+r32num[slot] : slot;
+        if (!p || !p.home_team) {
+          rows += `<div class="modal-match-row pending"><div class="mm-match">${meta}</div><div class="mm-pred">—</div><div class="mm-real pending">—</div><div class="mm-pts pending">—</div></div>`;
+          return;
+        }
+        const predStr = `${p.home_team} ${p.home_score}–${p.away_score} ${p.away_team}`;
+        const res = resBySlot[slot];
+        // Score this slot using same rule as engine
+        let cls='pending', pts=null, realStr='not played';
+        if (res && res.home_team && res.away_team && res.home_score!=null && res.away_score!=null) {
+          realStr = `${res.home_team} ${res.home_score}–${res.away_score} ${res.away_team}`;
+          const predPair=[p.home_team,p.away_team].sort().join('|');
+          const realPair=[res.home_team,res.away_team].sort().join('|');
+          if (predPair!==realPair) { cls='wrong'; pts=0; }
+          else {
+            let phs,pas;
+            if (p.home_team===res.home_team){phs=p.home_score;pas=p.away_score;}
+            else {phs=p.away_score;pas=p.home_score;}
+            if (phs===res.home_score && pas===res.away_score){cls='exact';pts=3;totalPts+=3;totalExact++;}
+            else {
+              const a=phs>pas?'H':phs<pas?'A':'D';const b=res.home_score>res.away_score?'H':res.home_score<res.away_score?'A':'D';
+              if(a===b){cls='correct';pts=1;totalPts+=1;totalCorrect++;}else{cls='wrong';pts=0;}
+            }
+          }
+        }
+        rows += `<div class="modal-match-row ${cls}">
+          <div class="mm-match" style="font-size:11px;">${meta}: ${predStr}</div>
+          <div class="mm-real ${cls}" style="font-size:11px;">${realStr}</div>
+          <div class="mm-pts ${cls}">${pts==null?'—':(pts>0?'+'+pts:'0')}</div>
+        </div>`;
+      });
+      bodyHtml += `<div class="modal-group"><div class="modal-group-title">${label}</div>${rows}</div>`;
+    });
+
+    document.getElementById('modal-player-pts').textContent = `${totalPts} KO pts — ${totalExact} exact, ${totalCorrect} correct`;
+    document.getElementById('modal-body').innerHTML = bodyHtml;
+  } catch(e) {
+    document.getElementById('modal-body').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--red)">Error loading KO predictions.</div>';
+  }
+}
+
 
 // ══════════════════════════════════════════════════════
 // ADMIN
