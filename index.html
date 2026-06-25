@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v74-TEST — fix players order (submitted_at→id) so leaderboard loads on test -->
+<!-- v75-TEST — admin KO score entry (all 32 slots: teams+scores+winner); removed My Predictions nav -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -564,6 +564,9 @@ body.has-ko-bar .admin-trigger{bottom:4.5rem;}
 .adm-ko-in:focus{outline:none;border-color:var(--gold);}
 .adm-ko-vs{font-size:9px;color:var(--text3);flex-shrink:0;}
 .adm-ko-save{background:var(--gold);color:#1a1205;border:none;border-radius:6px;font-size:11px;font-weight:700;padding:6px 10px;cursor:pointer;flex-shrink:0;}
+.adm-ko-sc{width:38px;flex-shrink:0;background:rgba(0,0,0,0.35);border:1px solid var(--border2);border-radius:6px;color:var(--text);font-size:12px;text-align:center;padding:6px 2px;}
+.adm-ko-sc:focus{outline:none;border-color:var(--gold);}
+.adm-ko-win{flex:0 0 110px;font-size:11px;}
 .admin-group{margin-bottom:1.25rem;}
 .admin-group-title{
   font-family:'Bebas Neue',sans-serif;
@@ -944,7 +947,6 @@ body.has-ko-bar .admin-trigger{bottom:4.5rem;}
       <div class="header-nav">
         <button class="nav-btn" onclick="showView('welcome')">Home</button>
         <button class="nav-btn" onclick="showView('bracket')">Bracket</button>
-        <button class="nav-btn" id="my-preds-btn" onclick="goToMyPreds()" style="display:none">My Predictions</button>
       </div>
       <div class="header-player" id="lb-header-player"></div>
     </div>
@@ -2499,38 +2501,77 @@ async function buildAdminKoSlots() {
   const bySlot = {};
   results.forEach(r => { bySlot[r.slot] = r; });
 
-  // Only R32 slots are settable here (later rounds resolve from picks/results)
   const r32num = {}; KO_R32.forEach((m,i)=>{ r32num[m.id]=73+i; });
-  let html = '';
-  KO_R32.forEach(m => {
-    const r = bySlot[m.id] || {};
-    const h = (r.home_team || '').replace(/"/g,'&quot;');
-    const a = (r.away_team || '').replace(/"/g,'&quot;');
-    html += `<div class="adm-ko-row">
-      <span class="adm-ko-slot">M${r32num[m.id]}</span>
-      <input class="adm-ko-in" id="koadm_h_${m.id}" placeholder="${koLabel(m.home)}" value="${h}">
-      <span class="adm-ko-vs">vs</span>
-      <input class="adm-ko-in" id="koadm_a_${m.id}" placeholder="${koLabel(m.away)}" value="${a}">
-      <button class="adm-ko-save" onclick="saveKoSlot('${m.id}')">Save</button>
+  // All slots in bracket order
+  const roundLabels = { R32:'Round of 32', R16:'Round of 16', QF:'Quarter-finals', SF:'Semi-finals', '3RD':'3rd Place', FINAL:'Final' };
+  const sections = [
+    ['R32', KO_R32.map(m=>m.id)],
+    ['R16', KO_PROGRESSION.filter(s=>s.round==='R16').map(s=>s.id)],
+    ['QF',  KO_PROGRESSION.filter(s=>s.round==='QF').map(s=>s.id)],
+    ['SF',  KO_PROGRESSION.filter(s=>s.round==='SF').map(s=>s.id)],
+    ['FINAL', ['FINAL']],
+    ['3RD', ['3RD']],
+  ];
+
+  const slotRow = (slot, labelLeft, labelRight, meta) => {
+    const r = bySlot[slot] || {};
+    const h = (r.home_team||'').replace(/"/g,'&quot;');
+    const a = (r.away_team||'').replace(/"/g,'&quot;');
+    const hs = r.home_score==null?'':r.home_score;
+    const as = r.away_score==null?'':r.away_score;
+    const win = (r.winner||'').replace(/"/g,'&quot;');
+    return `<div class="adm-ko-row">
+      <span class="adm-ko-slot">${meta}</span>
+      <input class="adm-ko-in" id="koadm_h_${slot}" placeholder="${labelLeft}" value="${h}">
+      <input class="adm-ko-sc" id="koadm_hs_${slot}" type="number" min="0" max="20" placeholder="–" value="${hs}">
+      <span class="adm-ko-vs">–</span>
+      <input class="adm-ko-sc" id="koadm_as_${slot}" type="number" min="0" max="20" placeholder="–" value="${as}">
+      <input class="adm-ko-in" id="koadm_a_${slot}" placeholder="${labelRight}" value="${a}">
+      <input class="adm-ko-in adm-ko-win" id="koadm_w_${slot}" placeholder="winner (if draw)" value="${win}" title="Who advanced — fill only if the 90-min score was a draw">
+      <button class="adm-ko-save" onclick="saveKoSlot('${slot}')">Save</button>
     </div>`;
+  };
+
+  let html = '';
+  sections.forEach(([round, ids]) => {
+    let rows = '';
+    ids.forEach(slot => {
+      let ll='Home', lr='Away', meta=slot;
+      if (round==='R32') {
+        const m = KO_R32.find(x=>x.id===slot);
+        ll = koLabel(m.home); lr = koLabel(m.away); meta = 'M'+r32num[slot];
+      }
+      rows += slotRow(slot, ll, lr, meta);
+    });
+    html += `<div class="admin-group"><div class="admin-group-title">${roundLabels[round]}</div>${rows}</div>`;
   });
   container.innerHTML = html;
 }
 
 async function saveKoSlot(slot) {
-  const h = document.getElementById(`koadm_h_${slot}`).value.trim();
-  const a = document.getElementById(`koadm_a_${slot}`).value.trim();
+  const h  = document.getElementById(`koadm_h_${slot}`).value.trim();
+  const a  = document.getElementById(`koadm_a_${slot}`).value.trim();
+  const hsRaw = document.getElementById(`koadm_hs_${slot}`).value.trim();
+  const asRaw = document.getElementById(`koadm_as_${slot}`).value.trim();
+  const winManual = document.getElementById(`koadm_w_${slot}`).value.trim();
+  const hs = hsRaw === '' ? null : parseInt(hsRaw,10);
+  const as = asRaw === '' ? null : parseInt(asRaw,10);
+  // Derive winner: higher score, else manual (for draws), else null
+  let winner = null;
+  if (hs != null && as != null) {
+    if (hs > as) winner = h;
+    else if (as > hs) winner = a;
+    else winner = winManual || null; // draw → needs manual winner
+  }
   try {
-    // Upsert this slot's teams into ko_results
     await sbFetch(`ko_results?on_conflict=slot`, {
       method: 'POST',
       headers: { 'Prefer': 'resolution=merge-duplicates,return=minimal' },
-      body: JSON.stringify([{ slot, home_team: h || null, away_team: a || null, updated_at: new Date().toISOString() }])
+      body: JSON.stringify([{ slot, home_team: h||null, away_team: a||null, home_score: hs, away_score: as, winner, updated_at: new Date().toISOString() }])
     });
     showToast(`✓ ${slot} saved`, true);
-    // Refresh the live bracket teams so the change shows
     window.KO_TEAMS = window.KO_TEAMS || {};
-    window.KO_TEAMS[slot] = { home: h || null, away: a || null };
+    window.KO_TEAMS[slot] = { home: h||null, away: a||null };
     koTeamsLoaded = false;
   } catch(e) {
     showToast('Error: ' + e.message, false);
