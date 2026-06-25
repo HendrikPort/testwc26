@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v81-TEST — bracket view uses same bg2 stadium background as leaderboard -->
+<!-- v82-TEST — gate bracket access behind name-gate; hide Bracket nav until name entered/admin -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -969,7 +969,7 @@ body.show-ko-submit .ko-pred-summary{display:flex;}
       <div class="header-logo">HUUM <span>WC26</span></div>
       <div class="header-nav">
         <button class="nav-btn" onclick="showView('welcome')">Home</button>
-        <button class="nav-btn" onclick="showView('bracket')">Bracket</button>
+        <button class="nav-btn" id="lb-nav-bracket" onclick="showView('bracket')" style="display:none">Bracket</button>
       </div>
       <div class="header-player" id="lb-header-player"></div>
     </div>
@@ -1617,6 +1617,13 @@ function updateCountdown() {
 // VIEW MANAGEMENT
 // ══════════════════════════════════════════════════════
 function showView(name) {
+  // Gate the editable bracket: must have entered a valid name first.
+  // Admin mode and read-only player view are exempt.
+  if (name === 'bracket' && !koViewMode && !isAdminMode && !currentPlayer) {
+    showView('welcome');
+    showToast('Enter your name first to make predictions', false);
+    return;
+  }
   // Hide all views
   ['welcome','predictions','leaderboard','bracket'].forEach(v => {
     const el = document.getElementById('view-'+v);
@@ -2302,6 +2309,9 @@ async function loadLeaderboard() {
     const mp = document.getElementById('my-preds-btn');
     if (mp) mp.style.display = 'inline-block';
   }
+  // "Bracket" nav only makes sense once a name is entered (or admin)
+  const navB = document.getElementById('lb-nav-bracket');
+  if (navB) navB.style.display = (currentPlayer || isAdminMode) ? 'inline-block' : 'none';
 
   try {
     // Players list — needed for all tabs.
