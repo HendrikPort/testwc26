@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v65-TEST — name-gate (players table) + KO submit saves 32 rows to ko_predictions -->
+<!-- v66-TEST — +/- stepper buttons on score inputs (tap instead of type) -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -839,6 +839,12 @@ body{font-family:'Barlow',sans-serif;color:var(--text);min-height:100vh;overflow
 .ko-score-in::-webkit-outer-spin-button,.ko-score-in::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
 .ko-score-in:focus{outline:none;border-color:var(--gold);background:rgba(232,200,74,0.08);}
 .ko-score-in:disabled{opacity:0.4;cursor:not-allowed;}
+.ko-stepper{display:flex;align-items:center;gap:2px;flex-shrink:0;}
+.ko-step{width:22px;height:28px;border:1px solid var(--border2);border-radius:6px;background:rgba(255,255,255,0.06);color:var(--text);font-size:16px;font-weight:700;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;user-select:none;}
+.ko-step:hover{border-color:var(--gold);background:rgba(232,200,74,0.12);}
+.ko-step:active{background:var(--gold);color:#1a1205;}
+.ko-step:disabled{opacity:0.3;cursor:not-allowed;}
+.ko-stepper .ko-score-in{width:30px;}
 .ko-team.advanced{color:var(--green);font-weight:700;}
 .ko-team.advanced img{box-shadow:0 0 0 2px var(--green);}
 .ko-tiebreak{margin-top:7px;border-top:1px dashed var(--border2);padding-top:7px;}
@@ -1674,9 +1680,13 @@ function renderBracket() {
       const val = (which === 'h' ? st.hs : st.as);
       return `<div class="ko-team${advCls}">
         <span class="ko-team-side">${flag(team)}<span>${team}</span></span>
-        <input class="ko-score-in" type="number" min="0" max="99" inputmode="numeric"
-          value="${val == null ? '' : val}"
-          data-slot="${id}" data-side="${which}">
+        <span class="ko-stepper">
+          <button class="ko-step ko-step-down" data-slot="${id}" data-side="${which}" data-dir="-1" tabindex="-1">−</button>
+          <input class="ko-score-in" type="number" min="0" max="99" inputmode="numeric"
+            value="${val == null ? '' : val}"
+            data-slot="${id}" data-side="${which}">
+          <button class="ko-step ko-step-up" data-slot="${id}" data-side="${which}" data-dir="1" tabindex="-1">+</button>
+        </span>
       </div>`;
     };
 
@@ -1820,6 +1830,22 @@ function koWireInputs() {
     btn.addEventListener('click', (e) => {
       const slot = e.target.dataset.tb;
       koState[slot].advance = e.target.dataset.team;
+      koFocus = null;
+      renderBracket();
+    });
+  });
+  // Stepper +/- buttons
+  document.querySelectorAll('.ko-step').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const b = e.currentTarget;
+      const slot = b.dataset.slot, side = b.dataset.side, dir = parseInt(b.dataset.dir, 10);
+      const st = koState[slot];
+      let cur = (side === 'h' ? st.hs : st.as);
+      if (cur == null) cur = 0;
+      const next = Math.max(0, Math.min(99, cur + dir));
+      if (side === 'h') st.hs = next; else st.as = next;
+      // If no longer a draw, clear stale advance pick
+      if (st.hs != null && st.as != null && st.hs !== st.as) st.advance = null;
       koFocus = null;
       renderBracket();
     });
