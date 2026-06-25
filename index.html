@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v76-TEST — KO bracket viewer in player modal (scored, colored) on knockout tab -->
+<!-- v77-TEST — player KO bracket as full scored tree (view mode), back button -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -876,6 +876,16 @@ body.has-ko-bar .admin-trigger{bottom:4.5rem;}
 .ko-pred-count b{color:var(--gold);}
 .ko-submit-btn{background:var(--gold);color:#1a1205;border:none;border-radius:8px;padding:11px 26px;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:0.06em;cursor:pointer;font-weight:400;}
 .ko-submit-btn:disabled{opacity:0.45;cursor:not-allowed;}
+/* ── Read-only scored bracket (viewing a player) ── */
+.ko-match.ko-exact{border-color:var(--green);background:rgba(74,222,128,0.12);}
+.ko-match.ko-correct{border-color:var(--yellow);background:rgba(250,204,21,0.12);}
+.ko-match.ko-wrong{border-color:var(--red);background:rgba(248,113,113,0.10);}
+.ko-score-static{font-size:14px;font-weight:700;color:var(--text);min-width:18px;text-align:center;flex-shrink:0;}
+.ko-pts-badge{position:absolute;top:-8px;right:-8px;font-size:10px;font-weight:700;border-radius:10px;padding:2px 7px;z-index:3;}
+.ko-pts-badge.three{background:var(--green);color:#07140c;}
+.ko-pts-badge.one{background:var(--yellow);color:#1a1205;}
+.ko-pts-badge.zero{background:var(--red);color:#1a0808;}
+.ko-match{position:relative;}
 </style>
 </head>
 <body>
@@ -1606,15 +1616,25 @@ function showView(name) {
   target.classList.add('active');
   // The fixed KO summary bar only exists on the bracket view
   document.body.classList.toggle('has-ko-bar', name === 'bracket');
+  // Leaving the bracket entirely exits any player-view mode
+  if (name !== 'bracket') {
+    koViewMode = null;
+    const back = document.getElementById('ko-view-back');
+    if (back) back.style.display = 'none';
+  }
   // Force scroll to top
   document.body.scrollTop = 0;
   document.documentElement.scrollTop = 0;
   window.scrollTo(0,0);
   if (name === 'leaderboard') loadLeaderboard();
   if (name === 'bracket') {
-    // Always reload the resolved/overridden teams fresh from ko_results,
-    // so admin edits and newly-resolved groups always show.
-    koLoadResultsTeams().then(() => { koState = {}; renderBracket(); });
+    if (koViewMode) {
+      // Read-only player view: render directly, don't reload editable teams
+      renderBracket();
+    } else {
+      // Always reload the resolved/overridden teams fresh from ko_results.
+      koLoadResultsTeams().then(() => { koState = {}; renderBracket(); });
+    }
   }
 }
 
@@ -1632,6 +1652,9 @@ function koTeamHtml(name, isPlaceholder) {
 //   hs/as: predicted scores (number or null)
 //   advance: team name the user picked to advance (only needed when hs===as)
 let koState = {};
+// When set, the bracket renders read-only as this player's scored picks.
+// { name, predBySlot, resBySlot }
+let koViewMode = null;
 const KO_R32_IDS = ['R32-1','R32-2','R32-3','R32-4','R32-5','R32-6','R32-7','R32-8','R32-9','R32-10','R32-11','R32-12','R32-13','R32-14','R32-15','R32-16'];
 
 function koSeedTeams() {
@@ -1774,13 +1797,48 @@ function koResolveDownstream() {
 }
 
 function renderBracket() {
-  if (Object.keys(koState).length === 0) koInitState();
-  koResolveDownstream();
+  if (!koViewMode) {
+    if (Object.keys(koState).length === 0) koInitState();
+    koResolveDownstream();
+  }
 
   const r32num = {}; KO_R32.forEach((m,i)=>{ r32num[m.id] = 73+i; });
 
+  // ── Read-only scored card (viewing a player's bracket) ──
+  const scoredCard = (id, meta) => {
+    const v = koViewMode;
+    const p = v.predBySlot[id];
+    const res = v.resBySlot[id];
+    const cls = id === 'FINAL' ? 'ko-match ko-final-match' : 'ko-match';
+    const metaHtml = meta ? `<div class="ko-meta">${meta}</div>` : '';
+    if (!p || !p.home_team) {
+      return `<div class="${cls}">${metaHtml}<div class="ko-team tbd"><span>—</span></div><div class="ko-vs">vs</div><div class="ko-team tbd"><span>—</span></div></div>`;
+    }
+    // Determine score outcome class + points
+    let tint = '', ptsBadge = '';
+    if (res && res.home_team && res.away_team && res.home_score!=null && res.away_score!=null) {
+      const predPair=[p.home_team,p.away_team].sort().join('|');
+      const realPair=[res.home_team,res.away_team].sort().join('|');
+      if (predPair!==realPair) { tint='ko-wrong'; ptsBadge='<span class="ko-pts-badge zero">0</span>'; }
+      else {
+        let phs,pas;
+        if (p.home_team===res.home_team){phs=p.home_score;pas=p.away_score;}
+        else {phs=p.away_score;pas=p.home_score;}
+        if (phs===res.home_score && pas===res.away_score){tint='ko-exact';ptsBadge='<span class="ko-pts-badge three">+3</span>';}
+        else { const a=phs>pas?'H':phs<pas?'A':'D';const b=res.home_score>res.away_score?'H':res.home_score<res.away_score?'A':'D'; if(a===b){tint='ko-correct';ptsBadge='<span class="ko-pts-badge one">+1</span>';}else{tint='ko-wrong';ptsBadge='<span class="ko-pts-badge zero">0</span>';} }
+      }
+    }
+    const side = (team, score) => `<div class="ko-team"><span class="ko-team-side">${flag(team)}<span>${team}</span></span><span class="ko-score-static">${score}</span></div>`;
+    return `<div class="${cls} ${tint}">${metaHtml}${ptsBadge}
+      ${side(p.home_team, p.home_score)}
+      <div class="ko-vs">vs</div>
+      ${side(p.away_team, p.away_score)}
+    </div>`;
+  };
+
   // Build an interactive prediction card for a slot
   const predCard = (id, meta) => {
+    if (koViewMode) return scoredCard(id, meta);
     const st = koState[id];
     const cls = id === 'FINAL' ? 'ko-match ko-pred ko-final-match' : 'ko-match ko-pred';
     const metaHtml = meta ? `<div class="ko-meta">${meta}</div>` : '';
@@ -1856,6 +1914,11 @@ function renderBracket() {
     + '</div>';
 
   document.getElementById('bracket-tree').innerHTML = leftHtml + centerHtml + rightHtml;
+  if (koViewMode) {
+    // Read-only: no inputs to wire, hide the submit bar, show whose bracket
+    document.body.classList.remove('has-ko-bar');
+    return;
+  }
   koWireInputs();
   koUpdateSummary();
   // Restore focus to the score input being edited (re-render rebuilds the DOM)
@@ -2312,8 +2375,8 @@ async function openPlayerModal(name) {
   document.getElementById('modal-player-pts').textContent = 'Loading…';
   document.getElementById('modal-body').innerHTML = '<div style="text-align:center;padding:2rem;"><span class="spinner"></span></div>';
 
-  // On the Knockout tab, show the player's KO bracket instead of group scorecard.
-  if (lbTab === 'knockout') { return koPlayerModal(name); }
+  // On the Knockout tab, show the player's KO bracket as a full tree (view mode).
+  if (lbTab === 'knockout') { closeModal(); return koOpenPlayerBracket(name); }
 
   try {
     const [preds, results] = await Promise.all([
@@ -2386,69 +2449,48 @@ document.getElementById('player-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('player-modal')) closeModal();
 });
 
-// Render a player's KO bracket predictions in the modal, scored.
-async function koPlayerModal(name) {
+// Open a player's KO bracket as the full tree, read-only and color-scored.
+async function koOpenPlayerBracket(name) {
   try {
     const [preds, results] = await Promise.all([koGetPlayerPreds(name), koGetResults()]);
-    const resBySlot = {};
-    results.forEach(r => { resBySlot[r.slot] = r; });
-    const predBySlot = {};
-    preds.forEach(p => { predBySlot[p.slot] = p; });
-
-    const r32num = {}; KO_R32.forEach((m,i)=>{ r32num[m.id]=73+i; });
-    const rounds = [
-      ['Round of 32', KO_R32.map(m=>m.id)],
-      ['Round of 16', KO_PROGRESSION.filter(s=>s.round==='R16').map(s=>s.id)],
-      ['Quarter-finals', KO_PROGRESSION.filter(s=>s.round==='QF').map(s=>s.id)],
-      ['Semi-finals', KO_PROGRESSION.filter(s=>s.round==='SF').map(s=>s.id)],
-      ['Final', ['FINAL']],
-      ['3rd Place', ['3RD']],
-    ];
-
-    let totalPts=0, totalExact=0, totalCorrect=0, bodyHtml='';
-    rounds.forEach(([label, ids]) => {
-      let rows='';
-      ids.forEach(slot => {
-        const p = predBySlot[slot];
-        const meta = slot.startsWith('R32-') ? 'M'+r32num[slot] : slot;
-        if (!p || !p.home_team) {
-          rows += `<div class="modal-match-row pending"><div class="mm-match">${meta}</div><div class="mm-pred">—</div><div class="mm-real pending">—</div><div class="mm-pts pending">—</div></div>`;
-          return;
-        }
-        const predStr = `${p.home_team} ${p.home_score}–${p.away_score} ${p.away_team}`;
-        const res = resBySlot[slot];
-        // Score this slot using same rule as engine
-        let cls='pending', pts=null, realStr='not played';
-        if (res && res.home_team && res.away_team && res.home_score!=null && res.away_score!=null) {
-          realStr = `${res.home_team} ${res.home_score}–${res.away_score} ${res.away_team}`;
-          const predPair=[p.home_team,p.away_team].sort().join('|');
-          const realPair=[res.home_team,res.away_team].sort().join('|');
-          if (predPair!==realPair) { cls='wrong'; pts=0; }
-          else {
-            let phs,pas;
-            if (p.home_team===res.home_team){phs=p.home_score;pas=p.away_score;}
-            else {phs=p.away_score;pas=p.home_score;}
-            if (phs===res.home_score && pas===res.away_score){cls='exact';pts=3;totalPts+=3;totalExact++;}
-            else {
-              const a=phs>pas?'H':phs<pas?'A':'D';const b=res.home_score>res.away_score?'H':res.home_score<res.away_score?'A':'D';
-              if(a===b){cls='correct';pts=1;totalPts+=1;totalCorrect++;}else{cls='wrong';pts=0;}
-            }
-          }
-        }
-        rows += `<div class="modal-match-row ${cls}">
-          <div class="mm-match" style="font-size:11px;">${meta}: ${predStr}</div>
-          <div class="mm-real ${cls}" style="font-size:11px;">${realStr}</div>
-          <div class="mm-pts ${cls}">${pts==null?'—':(pts>0?'+'+pts:'0')}</div>
-        </div>`;
-      });
-      bodyHtml += `<div class="modal-group"><div class="modal-group-title">${label}</div>${rows}</div>`;
-    });
-
-    document.getElementById('modal-player-pts').textContent = `${totalPts} KO pts — ${totalExact} exact, ${totalCorrect} correct`;
-    document.getElementById('modal-body').innerHTML = bodyHtml;
+    const predBySlot = {}; preds.forEach(p => { predBySlot[p.slot] = p; });
+    const resBySlot = {}; results.forEach(r => { resBySlot[r.slot] = r; });
+    const score = koScorePlayer(preds, resBySlot);
+    koViewMode = { name, predBySlot, resBySlot };
+    showView('bracket');
+    // Banner
+    const hero = document.querySelector('#view-bracket .lb-hero h2');
+    const sub = document.querySelector('#view-bracket .lb-hero p');
+    if (hero) hero.innerHTML = `${name}'s Bracket`;
+    if (sub) sub.textContent = `${score.pts} KO pts — ${score.exact} exact, ${score.correct} correct · tap “Back to leaderboard”`;
+    // Show a back button
+    let back = document.getElementById('ko-view-back');
+    if (!back) {
+      back = document.createElement('button');
+      back.id = 'ko-view-back';
+      back.className = 'nav-btn';
+      back.textContent = '← Back to leaderboard';
+      back.style.cssText = 'position:fixed;top:14px;left:16px;z-index:60;';
+      back.onclick = koExitPlayerBracket;
+      document.body.appendChild(back);
+    }
+    back.style.display = 'inline-block';
   } catch(e) {
-    document.getElementById('modal-body').innerHTML = '<div style="text-align:center;padding:2rem;color:var(--red)">Error loading KO predictions.</div>';
+    showToast('Error loading bracket: ' + e.message, false);
   }
+}
+function koExitPlayerBracket() {
+  koViewMode = null;
+  koState = {};
+  const back = document.getElementById('ko-view-back');
+  if (back) back.style.display = 'none';
+  // restore bracket hero text
+  const hero = document.querySelector('#view-bracket .lb-hero h2');
+  const sub = document.querySelector('#view-bracket .lb-hero p');
+  if (hero) hero.innerHTML = '🏆 Knockout Bracket';
+  if (sub) sub.textContent = 'Teams fill in automatically as the group stage finishes';
+  showView('leaderboard');
+  setLbTab('knockout');
 }
 
 
