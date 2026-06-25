@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>HUUM World Cup 2026</title>
-<!-- v70-TEST — admin KO tab: set R32 slot teams by hand (fills 3rd-place slots for testing) -->
+<!-- v71-TEST — admin trigger lifted above KO bar on bracket view -->
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -489,13 +489,16 @@ body{font-family:'Barlow',sans-serif;color:var(--text);min-height:100vh;overflow
    ADMIN PANEL
 ══════════════════════════════ */
 .admin-trigger{
-  position:fixed;bottom:1rem;right:1rem;z-index:300;
+  position:fixed;bottom:1rem;right:1rem;z-index:60;
   font-size:10px;color:rgba(255,255,255,0.15);
   background:none;border:none;cursor:pointer;
   font-family:'Barlow Condensed',sans-serif;
   letter-spacing:0.08em;text-transform:uppercase;
   transition:color 0.2s;
 }
+/* On the bracket view the fixed summary bar occupies the bottom, so lift
+   the admin trigger above it to avoid overlap with SUBMIT. */
+body.has-ko-bar .admin-trigger{bottom:4.5rem;}
 .admin-trigger:hover{color:rgba(255,255,255,0.4)}
 
 .admin-overlay{
@@ -1591,6 +1594,8 @@ function showView(name) {
   const target = document.getElementById('view-'+name);
   target.style.display = 'block';
   target.classList.add('active');
+  // The fixed KO summary bar only exists on the bracket view
+  document.body.classList.toggle('has-ko-bar', name === 'bracket');
   // Force scroll to top
   document.body.scrollTop = 0;
   document.documentElement.scrollTop = 0;
